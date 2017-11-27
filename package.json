@@ -3,16 +3,19 @@
   "version": "0.3.2",
   "description": "PPTX2HTML",
   "main": "dist/pptx2html.js",
-  "module": "src/main.js",
   "directories": {
     "test": "test"
   },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "ie 10"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "rollup -c -m -i src/main.js -o dist/pptx2html.js -f iife -n pptx2html",
-    "minify": "minify dist/pptx2html.js -o dist/pptx2html.min.js",
-    "build_worker": "rollup -c -m -i src/worker.js -o dist/worker.js -f iife -n pptx2html_worker",
-    "prepublish": "npm run build && npm run minify"
+    "build": "gulp minify",
+    "postinstall": "sed -i'' -e 's/result.deopt.isIdentifier()/t.isIdentifier(result.deopt)/g' ./node_modules/@babel/preset-env/lib/use-built-ins-plugin.js",
+    "prepare": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -25,26 +28,27 @@
   },
   "homepage": "https://github.com/arantes555/PPTX2HTML#readme",
   "devDependencies": {
+    "@babel/core": "^7.0.0-beta.32",
+    "@babel/polyfill": "^7.0.0-beta.32",
+    "@babel/preset-env": "^7.0.0-beta.32",
     "babel-core": "^6.26.0",
-    "babel-eslint": "^7.2.3",
-    "babel-minify": "^0.2.0",
-    "babel-plugin-syntax-async-functions": "^6.13.0",
-    "babel-plugin-transform-async-to-generator": "^6.24.1",
-    "babel-plugin-transform-runtime": "^6.23.0",
-    "babel-preset-es2015-rollup": "^3.0.0",
-    "rollup": "^0.49.2",
-    "rollup-plugin-babel": "^3.0.2",
-    "rollup-plugin-commonjs": "^8.2.0",
-    "rollup-plugin-node-builtins": "^2.1.2",
-    "rollup-plugin-node-globals": "^1.1.0",
-    "rollup-plugin-node-resolve": "^3.0.0",
-    "standard": "^10.0.3"
+    "babelify": "git+https://github.com/noygal/babelify.git#feature/babel-7-support",
+    "browserify": "^14.5.0",
+    "fs-jetpack": "^1.2.0",
+    "gulp": "^3.9.1",
+    "gulp-rename": "^1.2.2",
+    "gulp-sourcemaps": "^2.6.1",
+    "gulp-uglify": "^3.0.0",
+    "standard": "^10.0.3",
+    "uglify-es": "^3.2.0",
+    "vinyl-buffer": "^1.0.0",
+    "vinyl-source-stream": "^1.1.0"
   },
   "dependencies": {
     "colz": "^0.1.0",
-    "d3": "^4.10.2",
+    "d3": "^4.12.0",
     "jquery": "^3.2.1",
-    "jszip": "^3.1.4",
+    "jszip": "^3.1.5",
     "jszip-utils": "0.0.2",
     "dimple": "git+https://github.com/PMSI-AlignAlytics/dimple.git#2.3.0"
   }
