@@ -1,6 +1,7 @@
-/* global $, dimple */
 'use strict'
 
+import $ from 'jquery'
+import dimple from 'dimple'
 import processPptx from './process_pptx'
 import pptxStyle from './pptx_css'
 

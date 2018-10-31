@@ -1,8 +1,7 @@
-/* global btoa, JSZip */
 'use strict'
-
+import JSZip from 'jszip'
 import tXml from './txml'
-import * as colz from 'colz'
+import { Color } from 'colz/src/colz'
 
 function base64ArrayBuffer (arrayBuff) {
   const buff = new Uint8Array(arrayBuff)
@@ -62,7 +61,9 @@ export default function processPptx (setOnMessage = () => {}, postMessage) {
   })
 
   async function processPPTX (data) {
-    const zip = await JSZip.loadAsync(data)
+    // const zip = await JSZip.loadAsync(data)
+
+    const zip = JSZip(data)
     const dateBefore = new Date()
 
     if (zip.file('docProps/thumbnail.jpeg') !== null) {
@@ -114,7 +115,16 @@ export default function processPptx (setOnMessage = () => {}, postMessage) {
   }
 
   async function readXmlFile (zip, filename) {
-    return tXml(await zip.file(filename).async('text'))
+    // return tXml(await zip.file(filename).async('text'))
+
+    // return tXml(zip.file(filename).asText())
+
+    let xmlData = tXml(zip.file(filename).asText(), {simplify: 1})
+    if (xmlData['?xml'] !== undefined) {
+      return xmlData['?xml']
+    } else {
+      return xmlData
+    }
   }
 
   async function getContentTypes (zip) {
@@ -419,25 +429,25 @@ export default function processPptx (setOnMessage = () => {}, postMessage) {
 
   function processSpNode (node, warpObj) {
     /*
-     *  958    <xsd:complexType name="CT_GvmlShape">
-     *  959   <xsd:sequence>
-     *  960     <xsd:element name="nvSpPr" type="CT_GvmlShapeNonVisual"     minOccurs="1" maxOccurs="1"/>
-     *  961     <xsd:element name="spPr"   type="CT_ShapeProperties"        minOccurs="1" maxOccurs="1"/>
-     *  962     <xsd:element name="txSp"   type="CT_GvmlTextShape"          minOccurs="0" maxOccurs="1"/>
-     *  963     <xsd:element name="style"  type="CT_ShapeStyle"             minOccurs="0" maxOccurs="1"/>
-     *  964     <xsd:element name="extLst" type="CT_OfficeArtExtensionList" minOccurs="0" maxOccurs="1"/>
-     *  965   </xsd:sequence>
-     *  966 </xsd:complexType>
-     */
+    *  958    <xsd:complexType name="CT_GvmlShape">
+    *  959   <xsd:sequence>
+    *  960     <xsd:element name="nvSpPr" type="CT_GvmlShapeNonVisual"     minOccurs="1" maxOccurs="1"/>
+    *  961     <xsd:element name="spPr"   type="CT_ShapeProperties"        minOccurs="1" maxOccurs="1"/>
+    *  962     <xsd:element name="txSp"   type="CT_GvmlTextShape"          minOccurs="0" maxOccurs="1"/>
+    *  963     <xsd:element name="style"  type="CT_ShapeStyle"             minOccurs="0" maxOccurs="1"/>
+    *  964     <xsd:element name="extLst" type="CT_OfficeArtExtensionList" minOccurs="0" maxOccurs="1"/>
+    *  965   </xsd:sequence>
+    *  966 </xsd:complexType>
+    */
 
-    const id = node['p:nvSpPr']['p:cNvPr']['attrs']['id']
-    const name = node['p:nvSpPr']['p:cNvPr']['attrs']['name']
-    const idx = (node['p:nvSpPr']['p:nvPr']['p:ph'] === undefined) ? undefined : node['p:nvSpPr']['p:nvPr']['p:ph']['attrs']['idx']
-    let type = (node['p:nvSpPr']['p:nvPr']['p:ph'] === undefined) ? undefined : node['p:nvSpPr']['p:nvPr']['p:ph']['attrs']['type']
-    const order = node['attrs']['order']
+    const id = getTextByPathList(node, ['p:nvSpPr', 'p:cNvPr', 'attrs', 'id'])
+    const name = getTextByPathList(node, ['p:nvSpPr', 'p:cNvPr', 'attrs', 'name'])
+    const idx = (getTextByPathList(node, ['p:nvSpPr', 'p:nvPr', 'p:ph']) === undefined) ? undefined : getTextByPathList(node, ['p:nvSpPr', 'p:nvPr', 'p:ph', 'attrs', 'idx'])
+    let type = (getTextByPathList(node, ['p:nvSpPr', 'p:nvPr', 'p:ph']) === undefined) ? undefined : getTextByPathList(node, ['p:nvSpPr', 'p:nvPr', 'p:ph', 'attrs', 'type'])
+    const order = getTextByPathList(node, ['attrs', 'order'])
 
-    let slideLayoutSpNode
-    let slideMasterSpNode
+    let slideLayoutSpNode = undefined
+    let slideMasterSpNode = undefined
 
     if (type !== undefined) {
       if (idx !== undefined) {
@@ -1249,23 +1259,118 @@ export default function processPptx (setOnMessage = () => {}, postMessage) {
   }
 
   function processPicNode (node, warpObj) {
+
+    let rtrnData = ''
+    let mediaPicFlag = false
     const order = node['attrs']['order']
 
     const rid = node['p:blipFill']['a:blip']['attrs']['r:embed']
     const imgName = warpObj['slideResObj'][rid]['target']
     const imgFileExt = extractFileExtension(imgName).toLowerCase()
     const zip = warpObj['zip']
+
     const imgArrayBuffer = zip.file(imgName).asArrayBuffer()
     let mimeType = ''
     const xfrmNode = node['p:spPr']['a:xfrm']
     // /////////////////////////////////////Amir//////////////////////////////
-    const rotate = angleToDegrees(node['p:spPr']['a:xfrm']['attrs']['rot'])
+    // const rotate = angleToDegrees(node['p:spPr']['a:xfrm']['attrs']['rot'])
+
+    let rotate = 0
+    let rotateNode = getTextByPathList(node, ['p:spPr', 'a:xfrm', 'attrs', 'rot'])
+    if (rotateNode !== undefined) {
+      rotate = angleToDegrees(rotateNode)
+    }
+    //video
+    let vdoNode = getTextByPathList(node, ['p:nvPicPr', 'p:nvPr', 'a:videoFile'])
+    let vdoRid, vdoFile, vdoFileExt, vdoMimeType, uInt8Array, blob, vdoBlob, mediaSupportFlag = false
+    let mediaProcess = true
+    if (vdoNode !== undefined & mediaProcess) {
+      vdoRid = vdoNode['attrs']['r:link']
+      vdoFile = warpObj['slideResObj'][vdoRid]['target']
+      uInt8Array = zip.file(vdoFile).asArrayBuffer()
+      vdoFileExt = extractFileExtension(vdoFile).toLowerCase()
+      if (vdoFileExt === 'mp4' || vdoFileExt === 'webm' || vdoFileExt === 'ogg') {
+        vdoMimeType = getMimeType(vdoFileExt)
+        blob = new Blob([uInt8Array], {
+          type: vdoMimeType
+        })
+        vdoBlob = URL.createObjectURL(blob)
+        mediaSupportFlag = true
+        mediaPicFlag = true
+      }
+    }
+    //Audio
+    let audioNode = getTextByPathList(node, ['p:nvPicPr', 'p:nvPr', 'a:audioFile'])
+    let audioRid, audioFile, audioFileExt, audioMimeType, uInt8ArrayAudio, blobAudio, audioBlob
+    let audioPlayerFlag = false
+    let audioObjc
+    if (audioNode !== undefined & mediaProcess) {
+      audioRid = audioNode['attrs']['r:link']
+      audioFile = warpObj['slideResObj'][audioRid]['target']
+      audioFileExt = extractFileExtension(audioFile).toLowerCase()
+      if (audioFileExt === 'mp3' || audioFileExt === 'wav' || audioFileExt === 'ogg') {
+        uInt8ArrayAudio = zip.file(audioFile).asArrayBuffer()
+        blobAudio = new Blob([uInt8ArrayAudio])
+        audioBlob = URL.createObjectURL(blobAudio)
+        let cx = parseInt(xfrmNode['a:ext']['attrs']['cx']) * 20
+        let cy = xfrmNode['a:ext']['attrs']['cy']
+        let x = parseInt(xfrmNode['a:off']['attrs']['x']) / 2.5
+        let y = xfrmNode['a:off']['attrs']['y']
+        audioObjc = {
+          'a:ext': {
+            'attrs': {
+              'cx': cx,
+              'cy': cy
+            }
+          },
+          'a:off': {
+            'attrs': {
+              'x': x,
+              'y': y
+
+            }
+          }
+        }
+        audioPlayerFlag = true
+        mediaSupportFlag = true
+        mediaPicFlag = true
+      }
+    }
     // ////////////////////////////////////////////////////////////////////////
-    mimeType = getImageMimeType(imgFileExt)
-    return '<div class=\'block content\' style=\'' + getPosition(xfrmNode, undefined, undefined) + getSize(xfrmNode, undefined, undefined) +
+    // mimeType = getImageMimeType(imgFileExt)
+    // return '<div class=\'block content\' style=\'' + getPosition(xfrmNode, undefined, undefined) + getSize(xfrmNode, undefined, undefined) +
+    //   ' z-index: ' + order + ';' +
+    //   'transform: rotate(' + rotate + 'deg);' +
+    //   '\'><img src=\'data:' + mimeType + ';base64,' + base64ArrayBuffer(imgArrayBuffer) + '\' style=\'width: 100%; height: 100%\'/></div>'
+
+    mimeType = getMimeType(imgFileExt)
+    rtrnData = '<div class=\'block content\' style=\'' +
+      ((mediaProcess && audioPlayerFlag) ? getPosition(audioObjc, undefined, undefined) : getPosition(xfrmNode, undefined, undefined)) +
+      ((mediaProcess && audioPlayerFlag) ? getSize(audioObjc, undefined, undefined) : getSize(xfrmNode, undefined, undefined)) +
       ' z-index: ' + order + ';' +
-      'transform: rotate(' + rotate + 'deg);' +
-      '\'><img src=\'data:' + mimeType + ';base64,' + base64ArrayBuffer(imgArrayBuffer) + '\' style=\'width: 100%; height: 100%\'/></div>'
+      'transform: rotate(' + rotate + 'deg);\'>'
+    if ((vdoNode === undefined && audioNode === undefined) || !mediaProcess || !mediaSupportFlag) {
+      rtrnData += '<img src=\'data:' + mimeType + ';base64,' + base64ArrayBuffer(imgArrayBuffer) + '\' style=\'width: 100%; height: 100%\'/>'
+    } else if ((vdoNode !== undefined || audioNode !== undefined) && mediaProcess && mediaSupportFlag) {
+      if (vdoNode !== undefined) {
+        rtrnData += '<video  src=\'' + vdoBlob + '\' controls style=\'width: 100%; height: 100%\'>Your browser does not support the video tag.</video>'
+      }
+      if (audioNode !== undefined) {
+        rtrnData += '<audio id="audio_player" controls ><source src="' + audioBlob + '"></audio>'
+        //'<button onclick="audio_player.play()">Play</button>'+
+        //'<button onclick="audio_player.pause()">Pause</button>';
+      }
+    }
+    if (!mediaSupportFlag && mediaPicFlag) {
+      rtrnData += '<span style=\'color:red;font-size:40px;position: absolute;\'>This media file Not supported by HTML5</span>'
+    }
+    if ((vdoNode !== undefined || audioNode !== undefined) && !mediaProcess && mediaSupportFlag) {
+      console.log('Founded supported media file but media process disabled (mediaProcess=false)')
+    }
+    rtrnData += '</div>'
+    //console.log(rtrnData)
+    return rtrnData
+
   }
 
   async function processGraphicFrameNode (node, warpObj) {
@@ -1280,7 +1385,7 @@ export default function processPptx (setOnMessage = () => {}, postMessage) {
         result = await genChart(node, warpObj)
         break
       case 'http://schemas.openxmlformats.org/drawingml/2006/diagram':
-        result = genDiagram(node, warpObj)
+        result = await genDiagram(node, warpObj)
         break
       default:
     }
@@ -1691,7 +1796,7 @@ function processSpPrNode (node, warpObj) {
           const tbleStylList = tableStyles['a:tblStyleLst']['a:tblStyle']
 
           for (let k = 0; k < tbleStylList.length; k++) {
-            if (tbleStylList[k]['attrs']['styleId'] === tbleStyleId) {
+            if (tbleStylList[k]['attrs']['styleId'] === tbleStyleId.toString()) {
               thisTblStyle = tbleStylList[k]
             }
           }
@@ -2058,12 +2163,71 @@ function processSpPrNode (node, warpObj) {
     return result
   }
 
-  function genDiagram (node, warpObj) {
-    // const order = node['attrs']['order']
-    const xfrmNode = getTextByPathList(node, ['p:xfrm'])
-    return '<div class=\'block content\' style=\'border: 1px dotted;' +
-      getPosition(xfrmNode, undefined, undefined) + getSize(xfrmNode, undefined, undefined) +
-      '\'>TODO: diagram</div>'
+  async function genDiagram (node, warpObj) {
+
+    //console.log(warpObj)
+    //readXmlFile(zip, sldFileName)
+    /**files define the diagram:
+     * 1-colors#.xml,
+     * 2-data#.xml,
+     * 3-layout#.xml,
+     * 4-quickStyle#.xml.
+     * 5-drawing#.xml, which Microsoft added as an extension for persisting diagram layout information.
+     */
+      ///get colors#.xml, data#.xml , layout#.xml , quickStyle#.xml
+    let order = node['attrs']['order']
+    let zip = warpObj['zip']
+    let xfrmNode = getTextByPathList(node, ['p:xfrm'])
+    let dgmRelIds = getTextByPathList(node, ['a:graphic', 'a:graphicData', 'dgm:relIds', 'attrs'])
+    //console.log(dgmRelIds)
+    let dgmClrFileId = dgmRelIds['r:cs']
+    let dgmDataFileId = dgmRelIds['r:dm']
+    let dgmLayoutFileId = dgmRelIds['r:lo']
+    let dgmQuickStyleFileId = dgmRelIds['r:qs']
+    let dgmClrFileName = warpObj['slideResObj'][dgmClrFileId].target,
+      dgmDataFileName = warpObj['slideResObj'][dgmDataFileId].target,
+      dgmLayoutFileName = warpObj['slideResObj'][dgmLayoutFileId].target,
+      dgmQuickStyleFileName = warpObj['slideResObj'][dgmQuickStyleFileId].target
+    //console.log(dgmClrFileName,"\n",dgmDataFileName,"\n",dgmLayoutFileName,"\n",dgmQuickStyleFileName);
+    let dgmClr = await readXmlFile(zip, dgmClrFileName)
+    let dgmData = await readXmlFile(zip, dgmDataFileName)
+    let dgmLayout = await readXmlFile(zip, dgmLayoutFileName)
+    let dgmQuickStyle = await readXmlFile(zip, dgmQuickStyleFileName)
+    //console.log(dgmClr,dgmData,dgmLayout,dgmQuickStyle)
+    ///get drawing#.xml
+    let dgmDrwFileName = ''
+    let dataModelExt = getTextByPathList(dgmData, ['dgm:dataModel', 'dgm:extLst', 'a:ext', 'dsp:dataModelExt', 'attrs'])
+    if (dataModelExt !== undefined) {
+      var dgmDrwFileId = dataModelExt['relId']
+      dgmDrwFileName = warpObj['slideResObj'][dgmDrwFileId]['target']
+    }
+    //console.log("dgmDrwFileName: ",dgmDrwFileName);
+    let dgmDrwFile = ''
+    if (dgmDrwFileName != '') {
+      dgmDrwFile = await readXmlFile(zip, dgmDrwFileName)
+    }
+    //console.log("dgmDrwFile: ",dgmDrwFile);
+    //processSpNode(node, warpObj)
+    let dgmDrwSpArray = getTextByPathList(dgmDrwFile, ['dsp:drawing', 'dsp:spTree', 'dsp:sp'])
+    let rslt = ''
+    if (dgmDrwSpArray !== undefined) {
+      var dgmDrwSpArrayLen = dgmDrwSpArray.length
+      for (let i = 0; i < dgmDrwSpArrayLen; i++) {
+        let dspSp = dgmDrwSpArray[i]
+        let dspSpObjToStr = JSON.stringify(dspSp)
+        let pSpStr = dspSpObjToStr.replace(/dsp:/g, 'p:')
+        let pSpStrToObj = JSON.parse(pSpStr)
+        //console.log("pSpStrToObj["+i+"]: ",pSpStrToObj);
+        rslt += processSpNode(pSpStrToObj, warpObj)
+        //console.log("rslt["+i+"]: ",rslt);
+      }
+      // dgmDrwFile: "dsp:"-> "p:"
+    }
+
+    return '<div class=\'block content\' style=\'' +
+      getPosition(xfrmNode, undefined, undefined) +
+      getSize(xfrmNode, undefined, undefined) +
+      '\'>' + rslt + '</div>'
   }
 
   function getPosition (slideSpNode, slideLayoutSpNode, slideMasterSpNode) {
@@ -2446,7 +2610,7 @@ function getTextDirection (node, type, slideMasterTextStyles) {
         let shade = getTextByPathList(schemeClrNode, ['a:shade', 'attrs', 'val'])
         if (shade !== undefined) {
           shade = parseInt(shade) / 100000
-          const color = new colz.Color('#' + borderColor)
+          const color = new Color('#' + borderColor)
           color.setLum(color.hsl.l * shade)
           borderColor = color.hex.replace('#', '')
         }
@@ -2911,7 +3075,7 @@ function getTextDirection (node, type, slideMasterTextStyles) {
         }
       } else {
         if (isSvgMode) {
-          const color = new colz.Color(fillColor)
+          const color = new Color(fillColor)
           fillColor = color.rgb.toString()
 
           return fillColor
@@ -3025,7 +3189,9 @@ function getTextDirection (node, type, slideMasterTextStyles) {
     if (imgExt === 'xml') {
       return undefined
     }
+
     const imgArrayBuffer = warpObj['zip'].file(imgPath).asArrayBuffer()
+
     const imgMimeType = getImageMimeType(imgExt)
     img = 'data:' + imgMimeType + ';base64,' + base64ArrayBuffer(imgArrayBuffer)
     return img
@@ -3339,7 +3505,7 @@ function applyTint (rgbStr, tintValue) {
    * @param {number} offset
    */
   function applyLumModify (rgbStr, factor, offset) {
-    const color = new colz.Color(rgbStr)
+    const color = new Color(rgbStr)
     // color.setLum(color.hsl.l * factor);
     color.setLum(color.hsl.l * (1 + offset))
     return color.rgb.toString()
@@ -3496,5 +3662,56 @@ function applyTint (rgbStr, tintValue) {
     ptrn += '<image  xlink:href="' + fillColor + '" preserveAspectRatio="none" width="1" height="1"></image>'
     ptrn += '</pattern>'
     return ptrn
+  }
+
+  function getMimeType (imgFileExt) {
+    let mimeType = ''
+    //console.log(imgFileExt)
+    switch (imgFileExt.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        mimeType = 'image/jpeg'
+        break
+      case 'png':
+        mimeType = 'image/png'
+        break
+      case 'gif':
+        mimeType = 'image/gif'
+        break
+      case 'emf': // Not native support
+        mimeType = 'image/x-emf'
+        break
+      case 'wmf': // Not native support
+        mimeType = 'image/x-wmf'
+        break
+      case 'svg':
+        mimeType = 'image/svg+xml'
+        break
+      case 'mp4':
+        mimeType = 'video/mp4'
+        break
+      case 'webm':
+        mimeType = 'video/webm'
+        break
+      case 'ogg':
+        mimeType = 'video/ogg'
+        break
+      case 'avi':
+        mimeType = 'video/avi'
+        break
+      case 'mpg':
+        mimeType = 'video/mpg'
+        break
+      case 'wmv':
+        mimeType = 'video/wmv'
+        break
+      case 'mp3':
+        mimeType = 'audio/mpeg'
+        break
+      case 'wav':
+        mimeType = 'audio/wav'
+        break
+    }
+    return mimeType
   }
 }
