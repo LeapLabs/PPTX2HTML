@@ -35,7 +35,6 @@ const renderPptx = (pptx, resultElement, thumbElement) => {
                     break
                 case 'Done':
                     isDone = true
-                    processCharts(msg.data.charts)
                     resolve({time: msg.data.time, slideSize: msg.data.slideSize})
                     break
                 case 'WARN':
@@ -47,11 +46,11 @@ const renderPptx = (pptx, resultElement, thumbElement) => {
                     reject(new Error(msg.data))
                     break
                 case 'DEBUG':
-                    // console.debug('Worker: ', msg.data);
+                     console.debug('Worker: ', msg.data);
                     break
                 case 'INFO':
                 default:
-                // console.info('Worker: ', msg.data);
+                 console.info('Worker: ', msg.data);
             }
         }
         /*
@@ -101,138 +100,6 @@ const renderPptx = (pptx, resultElement, thumbElement) => {
 
 export default renderPptx
 
-function processCharts(queue) {
-    for (let i = 0; i < queue.length; i++) {
-        processSingleChart(queue[i].data)
-    }
-}
-
-function convertChartData(chartData) {
-    const data = []
-    const xLabels = []
-    const groupLabels = []
-    chartData.forEach((group, i) => {
-        const groupName = group.key
-        groupLabels[i] = group.key
-        group.values.forEach((value, j) => {
-            const labelName = group.xlabels[j]
-            xLabels[j] = group.xlabels[j]
-            data.push({name: labelName, group: groupName, value: value.y})
-        })
-    })
-    // console.log('TRANSFORMED DATA:', (data))
-    return {data, xLabels, groupLabels}
-}
-
-function processSingleChart(d) {
-    const chartID = d.chartID
-    const chartType = d.chartType
-    const chartData = d.chartData
-    // console.log(`WRITING GRAPH OF TYPE ${chartType} TO ID #${chartID}:`, chartData)
-
-    let data = []
-
-    switch (chartType) {
-        case 'lineChart': {
-            const {data: data_, xLabels, groupLabels} = convertChartData(chartData)
-            data = data_
-            const container = document.getElementById(chartID)
-            const svg = dimple.newSvg(`#${chartID}`, container.style.width, container.style.height)
-
-            // eslint-disable-next-line new-cap
-            const myChart = new dimple.chart(svg, data)
-            const xAxis = myChart.addCategoryAxis('x', 'name')
-            xAxis.addOrderRule(xLabels)
-            xAxis.addGroupOrderRule(groupLabels)
-            xAxis.title = null
-            const yAxis = myChart.addMeasureAxis('y', 'value')
-            yAxis.title = null
-            myChart.addSeries('group', dimple.plot.line)
-            myChart.addLegend(60, 10, 500, 20, 'right')
-            myChart.draw()
-
-            break
-        }
-        case 'barChart': {
-            const {data: data_, xLabels, groupLabels} = convertChartData(chartData)
-            data = data_
-            const container = document.getElementById(chartID)
-            const svg = dimple.newSvg('#' + chartID, container.style.width, container.style.height)
-
-            // eslint-disable-next-line new-cap
-            const myChart = new dimple.chart(svg, data)
-            const xAxis = myChart.addCategoryAxis('x', ['name', 'group'])
-            xAxis.addOrderRule(xLabels)
-            xAxis.addGroupOrderRule(groupLabels)
-            xAxis.title = null
-            const yAxis = myChart.addMeasureAxis('y', 'value')
-            yAxis.title = null
-            myChart.addSeries('group', dimple.plot.bar)
-            myChart.addLegend(60, 10, 500, 20, 'right')
-            myChart.draw()
-            break
-        }
-        case 'pieChart':
-        case 'pie3DChart': {
-            // data = chartData[0].values
-            // chart = nv.models.pieChart()
-            // nvDraw(chart, data)
-            const {data: data_, groupLabels} = convertChartData(chartData)
-            data = data_
-            const container = document.getElementById(chartID)
-            const svg = dimple.newSvg(`#${chartID}`, container.style.width, container.style.height)
-
-            // eslint-disable-next-line new-cap
-            const myChart = new dimple.chart(svg, data)
-            const pieAxis = myChart.addMeasureAxis('p', 'value')
-            pieAxis.addOrderRule(groupLabels)
-            myChart.addSeries('name', dimple.plot.pie)
-            myChart.addLegend(50, 20, 400, 300, 'left')
-            myChart.draw()
-            break
-        }
-        case 'areaChart': {
-            const {data: data_, xLabels, groupLabels} = convertChartData(chartData)
-            data = data_
-            const container = document.getElementById(chartID)
-            const svg = dimple.newSvg('#' + chartID, container.style.width, container.style.height)
-
-            // eslint-disable-next-line new-cap
-            const myChart = new dimple.chart(svg, data)
-            const xAxis = myChart.addCategoryAxis('x', 'name')
-            xAxis.addOrderRule(xLabels)
-            xAxis.addGroupOrderRule(groupLabels)
-            xAxis.title = null
-            const yAxis = myChart.addMeasureAxis('y', 'value')
-            yAxis.title = null
-            myChart.addSeries('group', dimple.plot.area)
-            myChart.addLegend(60, 10, 500, 20, 'right')
-            myChart.draw()
-
-            break
-        }
-        case 'scatterChart': {
-            for (let i = 0; i < chartData.length; i++) {
-                const arr = []
-                for (let j = 0; j < chartData[i].length; j++) {
-                    arr.push({x: j, y: chartData[i][j]})
-                }
-                data.push({key: 'data' + (i + 1), values: arr})
-            }
-
-            // data = chartData;
-            // chart = nv.models.scatterChart()
-            //   .showDistX(true)
-            //   .showDistY(true)
-            //   .color(d3.scale.category10().range())
-            // chart.xAxis.axisLabel('X').tickFormat(d3.format('.02f'))
-            // chart.yAxis.axisLabel('Y').tickFormat(d3.format('.02f'))
-            // nvDraw(chart, data)
-            break
-        }
-        default:
-    }
-}
 
 function setNumericBullets(elem) {
     const paragraphsArray = elem
